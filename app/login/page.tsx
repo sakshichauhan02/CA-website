@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, Suspense } from 'react'
 import AuthLayout from '@/components/auth/AuthLayout'
 import { login } from '@/app/auth/actions'
 import { Eye, EyeOff, Loader2, Mail, Lock } from 'lucide-react'
@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginContent() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const searchParams = useSearchParams()
@@ -97,5 +97,13 @@ export default function LoginPage() {
         </p>
       </form>
     </AuthLayout>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40} /></div>}>
+      <LoginContent />
+    </Suspense>
   )
 }
