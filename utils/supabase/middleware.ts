@@ -47,9 +47,19 @@ export const updateSession = async (request: NextRequest) => {
   } = await supabase.auth.getUser();
 
   // PROTECTED ROUTE LOGIC
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
+  const { pathname } = request.nextUrl;
+
+  // 1. If not logged in and trying to access protected routes, redirect to login
+  if (!user && (pathname.startsWith('/dashboard') || pathname.startsWith('/profile') || pathname.startsWith('/mock-tests'))) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  // 2. If logged in and trying to access auth pages, redirect to dashboard
+  if (user && (pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
     return NextResponse.redirect(url);
   }
 

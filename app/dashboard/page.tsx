@@ -1,34 +1,45 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Logo } from '@/components/logo'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  LayoutDashboard,
-  FileText,
-  BarChart3,
-  User,
-  LogOut,
-  Loader2,
-  Trophy,
-  Target,
-  Brain,
-  History,
-  ArrowRight
+import Sidebar from '@/components/Sidebar'
+import { UpgradeBanner } from '@/components/payment/UpgradeBanner'
+import { 
+  FileText, 
+  LogOut, 
+  Trophy, 
+  Target, 
+  History, 
+  ArrowRight,
+  TrendingUp,
+  Sparkles,
+  Bell,
+  Activity,
+  Calendar,
+  AlertTriangle,
+  Lightbulb,
+  Zap,
+  Flame,
+  CheckCircle,
+  XCircle,
+  BarChart4
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, isSameDay, subDays, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns'
+import { 
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts'
+import '@/components/DashboardOverview.css'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -37,8 +48,17 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({
     totalTests: 0,
     avgScore: 0,
-    strongSubject: 'N/A'
+    highestScore: 0,
+    passCount: 0,
+    failCount: 0,
+    strongestSubject: 'N/A',
+    weakestSubject: 'N/A',
+    streak: 0,
+    weeklyTests: 0
   })
+  const [chartData, setChartData] = useState<any[]>([])
+  const [weakSubjectsList, setWeakSubjectsList] = useState<string[]>([])
+  
   const router = useRouter()
   const supabase = createClient()
 
@@ -52,48 +72,96 @@ export default function DashboardPage() {
         }
         setUser(user)
 
-        // Fetch test results
         const { data: resultsData, error } = await supabase
           .from('test_results')
-          .select('*')
+          .select(`
+            *,
+            mcq_tests (
+              title,
+              subject
+            )
+          `)
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: true })
 
-        console.log("Dashboard - Results Data:", resultsData)
         if (error) throw error
 
         if (resultsData && resultsData.length > 0) {
-          setResults(resultsData)
+          setResults([...resultsData].reverse())
           
-          // Calculate stats
           const total = resultsData.length
-          const avg = Math.round(resultsData.reduce((acc, curr) => acc + (curr.total_score || 0), 0) / total * 10) / 10
+          const avg = Math.round(resultsData.reduce((acc, curr) => acc + (Number(curr.percentage) || 0), 0) / total)
+          const highest = Math.max(...resultsData.map(r => Number(r.percentage) || 0))
           
-          // Calculate strongest subject from all topic_scores
-          const allTopicScores: Record<string, number> = {}
+          // Pass/Fail
+          const passCount = resultsData.filter(r => (Number(r.percentage) || 0) >= 40).length
+          const failCount = total - passCount
+
+          // Subject Analysis
+          const subjectAverages: Record<string, { total: number, count: number }> = {}
           resultsData.forEach(r => {
-            if (r.topic_scores) {
-              Object.entries(r.topic_scores).forEach(([topic, score]) => {
-                allTopicScores[topic] = (allTopicScores[topic] || 0) + (score as number)
-              })
-            }
+            const sub = r.mcq_tests?.subject || 'General'
+            if (!subjectAverages[sub]) subjectAverages[sub] = { total: 0, count: 0 }
+            subjectAverages[sub].total += (Number(r.percentage) || 0)
+            subjectAverages[sub].count += 1
           })
+
+          const subjectsWithAvg = Object.entries(subjectAverages).map(([name, data]) => ({
+            name,
+            avg: data.total / data.count
+          }))
+
+          const strongest = [...subjectsWithAvg].sort((a, b) => b.avg - a.avg)[0]?.name || 'N/A'
+          const weakest = [...subjectsWithAvg].sort((a, b) => a.avg - b.avg)[0]?.name || 'N/A'
           
-          const strongest = Object.entries(allTopicScores).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'
+          // Streak Counter
+          let streak = 0
+          const dates = resultsData.map(r => new Date(r.created_at))
+          let checkDate = new Date()
           
+          while (true) {
+            const hasTest = dates.some(d => isSameDay(d, checkDate))
+            if (hasTest) {
+              streak++
+              checkDate = subDays(checkDate, 1)
+            } else {
+              break
+            }
+          }
+
+          // Weekly Progress
+          const now = new Date()
+          const weekStart = startOfWeek(now, { weekStartsOn: 1 })
+          const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
+          const weeklyTests = resultsData.filter(r => 
+            isWithinInterval(new Date(r.created_at), { start: weekStart, end: weekEnd })
+          ).length
+
           setStats({
             totalTests: total,
             avgScore: avg,
-            strongSubject: strongest
+            highestScore: highest,
+            passCount,
+            failCount,
+            strongestSubject: strongest,
+            weakestSubject: weakest,
+            streak,
+            weeklyTests
           })
+
+          setChartData(resultsData.slice(-10).map(r => ({
+            name: format(new Date(r.created_at), 'dd MMM'),
+            score: Math.round(Number(r.percentage) || 0)
+          })))
+
+          setWeakSubjectsList(subjectsWithAvg.filter(s => s.avg < 60).map(s => s.name).slice(0, 3))
         }
       } catch (err) {
-        console.error("Dashboard - Error fetching data:", err)
+        console.error("Dashboard Error:", err)
       } finally {
         setLoading(false)
       }
     }
-
     fetchData()
   }, [router, supabase])
 
@@ -104,181 +172,183 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-sm font-medium text-muted-foreground">Loading your dashboard...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
+        <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
       </div>
     )
   }
 
-  const studentName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student'
+  const passPercentage = stats.totalTests > 0 ? Math.round((stats.passCount / stats.totalTests) * 100) : 0
+  const ratioData = [
+    { name: 'Pass', value: stats.passCount, color: '#10b981' },
+    { name: 'Fail', value: stats.failCount, color: '#ef4444' }
+  ]
 
   return (
-    <div className="flex min-h-screen bg-muted/30">
-      {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-50 w-64 border-r border-border bg-background hidden md:block">
-        <div className="flex h-full flex-col">
-          <div className="flex h-16 items-center border-b px-6">
-            <Link href="/" className="flex items-center gap-2">
-              <Logo className="scale-90" />
-            </Link>
+    <div className="flex min-h-screen bg-[#f8fafc]">
+      <Sidebar />
+      
+      <div className="flex-1 md:ml-[280px] p-5 md:p-8 lg:p-12 transition-all space-y-8">
+        <UpgradeBanner />
+        {/* Header */}
+        <header className="mb-8 md:mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">Performance Overview</h1>
+            <p className="text-slate-500 text-base md:text-lg font-medium mt-1 italic">Welcome back, {user?.user_metadata?.full_name || user?.email?.split('@')[0]}</p>
           </div>
-          <nav className="flex-1 space-y-1 p-4">
-            <Link href="/dashboard" className="flex items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-primary transition-colors font-bold shadow-sm">
-              <LayoutDashboard className="h-4 w-4" />
-              <span className="text-sm">Home</span>
-            </Link>
-            <Link href="/mock-tests" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              <Brain className="h-4 w-4" />
-              <span className="text-sm font-medium">Mock Tests</span>
-            </Link>
-            <Link href="/results" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              <BarChart3 className="h-4 w-4" />
-              <span className="text-sm font-medium">My Results</span>
-            </Link>
-            <Link href="/profile" className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              <User className="h-4 w-4" />
-              <span className="text-sm font-medium">Profile</span>
-            </Link>
-          </nav>
-          <div className="border-t p-4">
-            <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-5 text-white shadow-lg shadow-blue-500/20">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-2">Upgrade to Pro</p>
-              <p className="text-xs text-blue-50 mb-4 opacity-90 leading-relaxed font-medium">Get access to all advanced mock tests and AI analysis.</p>
-              <Button size="sm" className="w-full bg-white text-blue-600 hover:bg-blue-50 font-bold rounded-xl border-none">Upgrade Now</Button>
+
+          
+          <div className="flex items-center gap-4">
+            <div className="px-6 py-3 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+              <div className="w-10 h-10 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center">
+                <Flame size={20} fill="currentColor" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Day Streak</span>
+                <span className="text-lg font-black text-slate-900">{stats.streak} Days</span>
+              </div>
+            </div>
+            <button onClick={handleSignOut} className="p-4 bg-white text-slate-400 hover:text-red-600 rounded-2xl border border-slate-100 transition-all">
+              <LogOut size={20} />
+            </button>
+          </div>
+        </header>
+
+        {/* Primary Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-10">
+          <div className="bg-white p-5 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-slate-50 shadow-sm">
+            <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Tests</p>
+            <span className="text-2xl md:text-3xl font-black text-slate-900">{stats.totalTests}</span>
+          </div>
+          <div className="bg-white p-5 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-slate-50 shadow-sm">
+            <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Avg Score</p>
+            <span className="text-2xl md:text-3xl font-black text-emerald-600">{stats.avgScore}%</span>
+          </div>
+          <div className="bg-white p-5 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-slate-50 shadow-sm">
+            <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pass Ratio</p>
+            <span className="text-2xl md:text-3xl font-black text-blue-600">{passPercentage}%</span>
+          </div>
+          <div className="bg-white p-5 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-slate-50 shadow-sm">
+            <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Weekly Tests</p>
+            <span className="text-2xl md:text-3xl font-black text-amber-600">{stats.weeklyTests}</span>
+          </div>
+        </div>
+
+
+        {/* Advanced Insights Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+          {/* Main Chart */}
+          <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/30">
+            <h3 className="text-lg md:text-xl font-black text-slate-800 mb-6 md:mb-8 flex items-center gap-2">
+              <BarChart4 className="text-blue-600" />
+              Progression Curve
+            </h3>
+            <div className="h-[200px] md:h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} domain={[0, 100]} />
+                  <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                  <Area type="monotone" dataKey="score" stroke="#2563eb" strokeWidth={4} fillOpacity={1} fill="url(#colorScore)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Pass/Fail Distribution */}
+          <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/30 flex flex-col">
+            <h3 className="text-lg md:text-xl font-black text-slate-800 mb-6 md:mb-8">Pass/Fail Ratio</h3>
+
+            <div className="flex-1 flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={ratioData}
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {ratioData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex justify-between mt-6">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-xs font-bold text-slate-500">Pass: {stats.passCount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span className="text-xs font-bold text-slate-500">Fail: {stats.failCount}</span>
+              </div>
             </div>
           </div>
         </div>
-      </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
-        {/* Header */}
-        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/80 px-6 backdrop-blur-md">
-          <div className="flex items-center gap-4">
-            <h2 className="text-sm font-medium text-muted-foreground hidden sm:block">Welcome back,</h2>
-            <span className="text-sm font-black sm:text-lg tracking-tight">{studentName}</span>
-          </div>
-          <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-muted-foreground hover:text-destructive font-bold rounded-xl">
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
-        </header>
-
-        {/* Content Area */}
-        <main className="flex-1 p-6 md:p-8 space-y-8 max-w-6xl mx-auto w-full">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight mb-2 text-slate-900 dark:text-white">Dashboard Overview</h1>
-            <p className="text-muted-foreground text-lg font-medium">Here&apos;s your current status in CA preparation.</p>
+        {/* Focus Areas & Strengths */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-lg flex items-center gap-6">
+            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+              <Trophy size={32} />
+            </div>
+            <div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Strongest Subject</span>
+              <span className="text-2xl font-black text-slate-900">{stats.strongestSubject}</span>
+              <p className="text-xs font-medium text-emerald-600 mt-1">Excellent performance here!</p>
+            </div>
           </div>
 
-          {/* Stats Grid */}
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white dark:bg-slate-900 rounded-[2rem] overflow-hidden group hover:shadow-xl transition-all duration-300">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Tests Taken</CardTitle>
-                <div className="h-10 w-10 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center rotate-3 transition-transform group-hover:rotate-0">
-                  <FileText className="h-5 w-5 text-blue-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-black text-slate-900 dark:text-white">{stats.totalTests}</div>
-                <p className="text-xs text-muted-foreground mt-2 font-medium">Completed mock attempts</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white dark:bg-slate-900 rounded-[2rem] overflow-hidden group hover:shadow-xl transition-all duration-300">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Average Score</CardTitle>
-                <div className="h-10 w-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center -rotate-3 transition-transform group-hover:rotate-0">
-                  <Trophy className="h-5 w-5 text-emerald-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-black text-slate-900 dark:text-white">{stats.avgScore}</div>
-                <p className="text-xs text-muted-foreground mt-2 font-medium">Cumulative performance</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white dark:bg-slate-900 rounded-[2rem] overflow-hidden group hover:shadow-xl transition-all duration-300">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Strong Subject</CardTitle>
-                <div className="h-10 w-10 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center rotate-3 transition-transform group-hover:rotate-0">
-                  <Target className="h-5 w-5 text-amber-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-600 to-orange-600 truncate">{stats.strongSubject}</div>
-                <p className="text-xs text-muted-foreground mt-2 font-medium">Best performing topic</p>
-              </CardContent>
-            </Card>
+          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-lg flex items-center gap-6">
+            <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shrink-0">
+              <AlertTriangle size={32} />
+            </div>
+            <div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Needs Attention</span>
+              <span className="text-2xl font-black text-slate-900">{stats.weakestSubject}</span>
+              <p className="text-xs font-medium text-red-600 mt-1">Lowest average score detected.</p>
+            </div>
           </div>
+        </div>
 
-          {/* Recent Activity */}
-          <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white dark:bg-slate-900 rounded-[2rem] overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between p-8 border-b border-slate-50 dark:border-slate-800">
-              <div>
-                <CardTitle className="text-xl font-black flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800">
-                    <History className="h-5 w-5 text-slate-400" />
+        {/* Improvement List */}
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl p-10">
+          <div className="flex items-center gap-3 mb-8">
+            <Lightbulb className="text-amber-500" />
+            <h3 className="text-2xl font-black text-slate-800 tracking-tight">Improvement Checklist</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {weakSubjectsList.length > 0 ? (
+              weakSubjectsList.map((sub, i) => (
+                <div key={i} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:border-red-100 transition-all">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-black text-slate-900 uppercase text-xs tracking-widest">{sub}</span>
+                    <Zap size={16} className="text-amber-500" />
                   </div>
-                  Recent Test Activity
-                </CardTitle>
-                <CardDescription className="text-slate-500 font-medium">Detailed breakdown of your latest attempts</CardDescription>
+                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                    Accuracy in {sub} is low. Focus on core concepts and attempt at least 3 more mock tests this week.
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-3 text-center py-10">
+                <p className="text-slate-400 font-black uppercase text-xs tracking-widest">You are doing great in all subjects!</p>
               </div>
-              <Button variant="outline" size="sm" asChild className="rounded-xl font-bold">
-                <Link href="/results">View All Results</Link>
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/50 dark:bg-slate-800/50 border-none">
-                    <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Subject / Test</TableHead>
-                    <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Date</TableHead>
-                    <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Score</TableHead>
-                    <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {results.length > 0 ? (
-                    results.slice(0, 5).map((activity, i) => (
-                      <TableRow key={i} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors border-slate-50 dark:border-slate-800">
-                        <TableCell className="px-8 py-5 font-bold text-slate-700 dark:text-slate-300">
-                          {activity.test_name || 'CA Mock Test'}
-                        </TableCell>
-                        <TableCell className="px-8 py-5 text-sm font-medium text-slate-400">
-                          {format(new Date(activity.created_at), 'MMM dd, yyyy')}
-                        </TableCell>
-                        <TableCell className="px-8 py-5 text-center">
-                          <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-black text-sm border border-emerald-100 dark:border-emerald-800">
-                            {activity.total_score}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-8 py-5 text-right">
-                          <Button variant="ghost" size="sm" asChild className="rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-all font-bold">
-                            <Link href="/results" className="flex items-center gap-1">
-                              Details
-                              <ArrowRight className="h-3 w-3" />
-                            </Link>
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} className="h-32 text-center text-muted-foreground font-medium italic">
-                        No recent activity found. Start a mock test to see your results!
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </main>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

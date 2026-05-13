@@ -1,80 +1,99 @@
 'use client';
 
 import React from 'react';
-import { PaymentButton } from './PaymentButton';
+import { Lock, Zap, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
 
 interface LockedContentProps {
   hasAccess: boolean;
   children: React.ReactNode;
+  featureName?: string;
+  minimal?: boolean;
 }
 
-export const LockedContent: React.FC<LockedContentProps> = ({ hasAccess, children }) => {
+export const LockedContent: React.FC<LockedContentProps> = ({ 
+  hasAccess, 
+  children, 
+  featureName = "this feature",
+  minimal = false
+}) => {
   if (hasAccess) {
     return <>{children}</>;
   }
 
-  return (
-    <div className="relative rounded-[2.5rem] overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl shadow-blue-500/5 h-auto min-h-[600px]">
-      {/* Blurred Background Mockup - Simplified to reduce noise */}
-      <div className="filter blur-2xl opacity-10 select-none pointer-events-none p-8 space-y-8">
-        <div className="h-8 bg-slate-200 dark:bg-slate-800 rounded-xl w-1/4" />
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-3 bg-slate-200 dark:bg-slate-800 rounded-full w-full" />
-          ))}
+  if (minimal) {
+    return (
+      <div className="relative overflow-hidden group">
+        <div className="filter blur-md opacity-40 pointer-events-none select-none">
+          {children}
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="h-40 bg-slate-100 dark:bg-slate-800/50 rounded-2xl" />
-          <div className="h-40 bg-slate-100 dark:bg-slate-800/50 rounded-2xl" />
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 bg-white/10 backdrop-blur-[1px] text-center">
+          <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center mb-2 shadow-lg">
+            <Lock size={18} />
+          </div>
+          <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-2">Pro Feature</p>
+          <Link 
+            href="/pricing"
+            className="px-4 py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-blue-700 transition-all active:scale-95"
+          >
+            Upgrade
+          </Link>
         </div>
       </div>
+    );
+  }
 
-      {/* Paywall Overlay */}
-      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 bg-white/20 dark:bg-slate-950/20 backdrop-blur-[2px] overflow-y-auto">
-        <div className="max-w-lg w-full bg-white dark:bg-slate-900 p-6 md:p-10 rounded-[3rem] shadow-[0_30px_70px_rgba(0,0,0,0.12)] border border-slate-100 dark:border-slate-800 text-center animate-in fade-in zoom-in duration-500 relative">
-          
-          <h3 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white mb-3 tracking-tight">
-            Unlock Your <span className="text-blue-600">Success Roadmap</span>
-          </h3>
-          
-          <p className="text-slate-500 dark:text-slate-400 mb-10 text-base font-medium">
-            Join 2,000+ CA aspirants using our data-backed strategy.
-          </p>
+  return (
+    <div className="relative rounded-[2rem] md:rounded-[3rem] overflow-hidden border border-slate-200 bg-white shadow-xl min-h-[400px] flex flex-col">
+      {/* Blurred Content Background */}
+      <div className="absolute inset-0 filter blur-xl opacity-20 pointer-events-none select-none p-10 overflow-hidden">
+        {children}
+      </div>
 
-          <div className="flex flex-col gap-8 w-full">
-            {/* Option 1 */}
-            <div className="relative group">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-1 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse">
-                LIMITED TIME OFFER
-              </div>
-              <div className="flex flex-col gap-3">
-                <PaymentButton planId="report" />
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                  PDF REPORT + ANALYSIS
-                </span>
-              </div>
-            </div>
-            
-            {/* Option 2 */}
-            <div className="relative group">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-1 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg">
-                BEST VALUE
-              </div>
-              <div className="flex flex-col gap-3">
-                <PaymentButton planId="mentoring" />
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                  REPORT + 1:1 MENTORING
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-8 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              SECURE CHECKOUT • VALID TODAY ONLY
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+      {/* Glassmorphism Paywall Overlay */}
+      <div className="absolute inset-0 z-20 flex items-center justify-center p-6 bg-slate-50/10 backdrop-blur-[4px]">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full bg-white p-10 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 text-center"
+        >
+          {/* Lock Icon with Glow */}
+          <div className="relative mx-auto w-20 h-20 mb-8">
+            <div className="absolute inset-0 bg-blue-600/20 blur-2xl rounded-full animate-pulse" />
+            <div className="relative w-full h-full bg-blue-600 rounded-3xl flex items-center justify-center text-white shadow-lg">
+              <Lock size={36} />
             </div>
           </div>
-        </div>
+
+          <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">
+            Premium Access <span className="text-blue-600">Locked</span>
+          </h3>
+          
+          <p className="text-slate-500 font-medium mb-10 leading-relaxed">
+            Upgrade to the Pro Plan to unlock <span className="text-slate-900 font-bold">{featureName}</span> and accelerate your CA preparation journey.
+          </p>
+
+          <div className="space-y-4">
+            <Link 
+              href="/pricing"
+              className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 group transition-all hover:bg-black hover:shadow-xl active:scale-95"
+            >
+              <Zap size={18} fill="currentColor" className="text-amber-400" />
+              Upgrade to Pro
+              <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+            </Link>
+            
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Instant Activation • Secure Payment
+            </p>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Fallback space for layout if children are not rendered or empty */}
+      <div className="invisible p-10 pointer-events-none">
+        {children}
       </div>
     </div>
   );

@@ -20,7 +20,7 @@ export function Navbar() {
           <Link href="#features" className="font-sans text-sm text-muted-foreground transition-colors hover:text-foreground">
             Features
           </Link>
-          <Link href="#pricing" className="font-sans text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <Link href="/pricing" className="font-sans text-sm text-muted-foreground transition-colors hover:text-foreground">
             Pricing
           </Link>
           <Link href="#" className="font-sans text-sm text-muted-foreground transition-colors hover:text-foreground">
